@@ -24,6 +24,7 @@ import { ensureAllFilesExistInConfluenceEffect } from "./TreeConfluence";
 import { createFolderStructureEffect as createLocalAdfTreeEffect } from "./TreeLocal";
 import { isEqual } from "./isEqual";
 import { remapInlineComments } from "./InlineCommentMapping";
+import { carryEditorBlockWidths } from "./EditorBlockWidths";
 
 export interface LocalAdfFileTreeNode {
 	name: string;
@@ -365,10 +366,15 @@ export class Publisher {
 				adfFile.contents,
 				{ workspace, pageFilePath: adfFile.absoluteFilePath },
 			);
-			const adfToUpload = yield* executeADFProcessingPipelineEffect(
-				adfProcessingPlugins,
-				preprocessedAdf,
-				supportFunctions,
+			// After processing, so blocks a plugin turned into something else (e.g. a
+			// rendered diagram) are not stamped as code blocks.
+			const adfToUpload = carryEditorBlockWidths(
+				yield* executeADFProcessingPipelineEffect(
+					adfProcessingPlugins,
+					preprocessedAdf,
+					supportFunctions,
+				),
+				existingPageData.adfContent,
 			);
 
 			if (uploadedAttachment) {

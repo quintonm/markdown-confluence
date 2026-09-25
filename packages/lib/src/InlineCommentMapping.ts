@@ -449,21 +449,29 @@ export function remapInlineComments(
 	// of it is anchored in the new document, the rest needs no fallback entry.
 	const anchoredIds = unmapped.length ? annotationIds(document) : new Set<string>();
 	const unanchored = unmapped.filter((comment) => !anchoredIds.has(comment.id));
-	const dropped = unanchored.filter((comment) => resolvedCommentIds.has(comment.id));
+	const dropped = new Set(
+		unanchored
+			.filter((comment) => resolvedCommentIds.has(comment.id))
+			.map((comment) => comment.id),
+	);
 	const fallback = unanchored.filter((comment) => !resolvedCommentIds.has(comment.id));
-	if (fallback.length) {
+	// One entry per comment: a comment split across text nodes is listed once.
+	const fallbackText = new Map<string, string>();
+	for (const comment of fallback)
+		fallbackText.set(comment.id, (fallbackText.get(comment.id) ?? "") + comment.text);
+	if (fallbackText.size) {
 		document.content.push(
 			heading({ level: 1 })(text("Inline comments that couldn't be mapped")),
 			ol({ order: 1 })(
-				...fallback.map((comment) =>
+				...[...fallbackText].map(([id, commentText]) =>
 					li([
 						p({
 							type: "text",
-							text: comment.text,
+							text: commentText,
 							marks: [
 								{
 									type: "annotation",
-									attrs: { annotationType: "inlineComment", id: comment.id },
+									attrs: { annotationType: "inlineComment", id },
 								},
 							],
 						} as TextDefinition),
@@ -474,8 +482,8 @@ export function remapInlineComments(
 	}
 	return {
 		document,
-		unmappedCount: fallback.length,
-		droppedResolvedCount: dropped.length,
+		unmappedCount: fallbackText.size,
+		droppedResolvedCount: dropped.size,
 		limitReached,
 		work,
 	};

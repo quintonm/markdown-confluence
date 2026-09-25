@@ -389,6 +389,21 @@ function applyComment(location: TextLocation, comment: InlineComment, work: Inli
 	return true;
 }
 
+/** IDs of the inline-comment annotations in a document (not charged to the matching budget). */
+function annotationIds(document: JSONDocNode): Set<string> {
+	const found = new Set<string>();
+	const stack: ADFEntity[] = [document as ADFEntity];
+	while (stack.length) {
+		const node = stack.pop()!;
+		for (const mark of node.marks ?? []) {
+			if (mark.type === "annotation" && mark.attrs?.["annotationType"] === "inlineComment")
+				found.add(mark.attrs["id"]);
+		}
+		for (const child of node.content ?? []) if (child) stack.push(child);
+	}
+	return found;
+}
+
 /**
  * Carry the existing page's inline-comment annotations onto the new document.
  *
@@ -430,8 +445,12 @@ export function remapInlineComments(
 			unmapped.push(comment);
 		}
 	}
-	const dropped = unmapped.filter((comment) => resolvedCommentIds.has(comment.id));
-	const fallback = unmapped.filter((comment) => !resolvedCommentIds.has(comment.id));
+	// Confluence can split one comment across several text nodes. Once any part
+	// of it is anchored in the new document, the rest needs no fallback entry.
+	const anchoredIds = unmapped.length ? annotationIds(document) : new Set<string>();
+	const unanchored = unmapped.filter((comment) => !anchoredIds.has(comment.id));
+	const dropped = unanchored.filter((comment) => resolvedCommentIds.has(comment.id));
+	const fallback = unanchored.filter((comment) => !resolvedCommentIds.has(comment.id));
 	if (fallback.length) {
 		document.content.push(
 			heading({ level: 1 })(text("Inline comments that couldn't be mapped")),

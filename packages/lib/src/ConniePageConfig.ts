@@ -8,6 +8,7 @@ export type PageContentType = "page" | "blogpost";
 export type ConfluencePerPageConfig = {
 	publish: FrontmatterConfig<boolean, "boolean">;
 	pageTitle: FrontmatterConfig<string, "text">;
+	stripFirstHeading: FrontmatterConfig<boolean, "boolean">;
 	frontmatterToPublish: FrontmatterConfig<string[], "array-text">;
 	tags: FrontmatterConfig<string[], "array-text">;
 	pageId: FrontmatterConfig<string | undefined, "text">;
@@ -51,7 +52,7 @@ export type ConfluencePerPageAllValues = {
 	[K in keyof ConfluencePerPageConfig]: ConfluencePerPageConfig[K]["default"]; // TODO: Accumlate Errors
 };
 
-type excludedProperties = "frontmatterToPublish" | "pageUrl";
+type excludedProperties = "frontmatterToPublish" | "pageUrl" | "stripFirstHeading";
 
 export type ConfluencePerPageValues = Omit<
 	{
@@ -121,6 +122,36 @@ export const conniePerPageConfig: ConfluencePerPageConfig = {
 				}
 			}
 			return markdownFile.pageTitle;
+		},
+	},
+	stripFirstHeading: {
+		key: "connie-strip-first-heading",
+		default: false,
+		inputType: "boolean",
+		inputValidator: (value) => {
+			switch (typeof value) {
+				case "boolean":
+					return { valid: true, errors: [] };
+				default:
+					return {
+						valid: false,
+						errors: [new Error("Strip first heading should be a boolean.")],
+					};
+			}
+		},
+		process: (yamlValue, markdownFile, _alreadyParsed, settings, adfContent) => {
+			if (yamlValue !== true) return false;
+			// firstHeadingPageTitle has already removed the first heading to use as the title.
+			const titleFromHeading =
+				settings.firstHeadingPageTitle &&
+				typeof markdownFile.frontmatter["connie-title"] !== "string";
+			const first = adfContent.content.at(0);
+			const level = (first?.attrs as { level?: number } | undefined)?.level;
+			if (!titleFromHeading && first?.type === "heading" && level === 1) {
+				// The Markdown keeps its title heading for editors; Confluence shows the page title.
+				adfContent.content = adfContent.content.slice(1);
+			}
+			return true;
 		},
 	},
 	frontmatterToPublish: {
@@ -342,7 +373,7 @@ export function processConniePerPageConfig(
 		}
 	}
 
-	return preventOverspreading(result, "frontmatterToPublish", "pageUrl");
+	return preventOverspreading(result, "frontmatterToPublish", "pageUrl", "stripFirstHeading");
 }
 
 function preventOverspreading<T>(source: Partial<T>, ...keysToOmit: excludedProperties[]): T {

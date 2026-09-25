@@ -612,6 +612,7 @@ async function publishSinglePage({
 	uploadRequests = [],
 	getLatestVersion = () => initialVersion,
 	updateContent = async (request) => request,
+	onProgress,
 }: {
 	settings?: ConfluenceSettings;
 	lock?: boolean;
@@ -629,6 +630,7 @@ async function publishSinglePage({
 	uploadRequests?: unknown[];
 	getLatestVersion?: () => number;
 	updateContent?: (request: UpdateContentRequest) => Promise<unknown>;
+	onProgress?: (message: string) => void;
 } = {}) {
 	const updateContentRequests: UpdateContentRequest[] = [];
 	const confluenceClient = makePublisherTestConfluenceClient({
@@ -660,7 +662,7 @@ async function publishSinglePage({
 			},
 		},
 	]);
-	const publisher = new Publisher(settings, confluenceClient, plugins);
+	const publisher = new Publisher(settings, confluenceClient, plugins, onProgress);
 
 	const result = await runEffect(
 		publisher
@@ -853,6 +855,28 @@ test("preserves unchanged pages when the publishing parent has higher ancestors"
 	expect(updateContentRequests).toEqual([]);
 });
 
+test("does not republish unchanged content after Confluence assigns localIds", async () => {
+	const markdown = "# Heading\n\nFirst paragraph.\n\n- item";
+	const existingAdf = parseMarkdownToADF(markdown, testPublishSettings.confluenceBaseUrl);
+	let assigned = 0;
+	const assignLocalIds = (node: {
+		type?: string;
+		attrs?: Record<string, unknown>;
+		content?: unknown[];
+	}) => {
+		if (node.type && node.type !== "text" && node.type !== "doc") {
+			node.attrs = { ...node.attrs, localId: `server-${assigned++}` };
+		}
+		for (const child of node.content ?? []) assignLocalIds(child as typeof node);
+	};
+	assignLocalIds(existingAdf as never);
+
+	const { result, updateContentRequests } = await publishSinglePage({ markdown, existingAdf });
+	expect(assigned).toBeGreaterThan(0);
+	expect(result[0]?.successfulUploadResult?.contentResult).toBe("same");
+	expect(updateContentRequests).toEqual([]);
+});
+
 test("moves a page when its immediate parent differs", async () => {
 	const { result, updateContentRequests } = await publishSinglePage({
 		existingAncestors: [{ id: "parent-id" }, { id: "old-folder" }],
@@ -921,6 +945,60 @@ function annotatedPublisherDocument(count: number): JSONDocNode {
 		],
 	} as JSONDocNode;
 }
+
+test("drops resolved comments that cannot be mapped and warns about open ones", async () => {
+	const annotatedParagraph = (value: string, id: string) => ({
+		type: "paragraph",
+		content: [
+			{
+				type: "text",
+				text: value,
+				marks: [{ type: "annotation", attrs: { annotationType: "inlineComment", id } }],
+			},
+		],
+	});
+	const requests: string[] = [];
+	const progress: string[] = [];
+	const { updateContentRequests } = await publishSinglePage({
+		markdown: "Rewritten paragraph",
+		existingAdf: {
+			type: "doc",
+			version: 1,
+			content: [
+				annotatedParagraph("Removed wording", "resolved-marker"),
+				annotatedParagraph("Gone", "open-marker"),
+			],
+		} as JSONDocNode,
+		sendRequest: async <T>(request: { url?: string }): Promise<T> => {
+			requests.push(request.url ?? "");
+			return {
+				results: [
+					{
+						resolutionStatus: "resolved",
+						properties: { inlineMarkerRef: "resolved-marker" },
+					},
+				],
+				_links: {},
+			} as T;
+		},
+		onProgress: (message) => progress.push(message),
+	});
+
+	const uploaded = JSON.stringify(
+		JSON.parse(updateContentRequests[0]?.body?.atlas_doc_format?.value ?? "{}"),
+	);
+	expect(requests).toEqual([
+		"/wiki/api/v2/pages/page-id/inline-comments?resolution-status=resolved&limit=250",
+	]);
+	expect(uploaded).toContain('"id":"open-marker"');
+	expect(uploaded).not.toContain("resolved-marker");
+	expect(progress).toContain(
+		"1 inline comment could not be mapped for Page; it was preserved in a fallback section at the end of the page.",
+	);
+	expect(progress).toContain(
+		"1 resolved inline comment on Page no longer matches any text and was dropped.",
+	);
+});
 
 test("does not remap comments on conflicting or excluded pages", async () => {
 	const remap = vi.spyOn(inlineComments, "remapInlineComments");

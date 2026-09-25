@@ -263,6 +263,7 @@ Individual Markdown files can override publishing behavior with frontmatter:
 ---
 connie-publish: true
 connie-title: Custom Confluence Page Title
+connie-strip-first-heading: true
 connie-page-id: "123456"
 connie-dont-change-parent-page: true
 connie-frontmatter-to-publish:
@@ -275,6 +276,8 @@ tags:
 ```
 
 These keys apply to one Markdown file at a time and are not global `.markdown-confluence.json` settings.
+
+`connie-strip-first-heading: true` removes a leading `#` heading from the published body, for notes that keep a title heading in Markdown while Confluence displays the page title. It has no effect when `firstHeadingPageTitle` already turned that heading into the title.
 
 ### Markdown Extensions And Macros
 

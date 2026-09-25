@@ -931,3 +931,56 @@ test("maps mixed source line endings after a fenced block", () => {
 	expect(serialized).not.toContain("hidden");
 	expect(serialized).toContain("visible");
 });
+
+test("connie-strip-first-heading drops a leading H1 when connie-title names the page", () => {
+	const adfFile = convertMDtoADF(
+		{
+			...createMarkdownFile("# Short heading\n\nBody"),
+			frontmatter: {
+				"connie-title": "Longer page title",
+				"connie-strip-first-heading": true,
+			},
+		},
+		testSettings,
+	);
+
+	expect(adfFile.pageTitle).toBe("Longer page title");
+	expect(adfFile.contents.content.map((node) => node.type)).toEqual(["paragraph"]);
+});
+
+test("connie-strip-first-heading leaves a leading heading below H1 in place", () => {
+	const adfFile = convertMDtoADF(
+		{
+			...createMarkdownFile("## Section\n\nBody"),
+			frontmatter: { "connie-strip-first-heading": true },
+		},
+		testSettings,
+	);
+
+	expect(adfFile.contents.content.map((node) => node.type)).toEqual(["heading", "paragraph"]);
+});
+
+test("connie-strip-first-heading does not strip a second H1 after firstHeadingPageTitle", () => {
+	const adfFile = convertMDtoADF(
+		{
+			...createMarkdownFile("# Title\n\n# Next\n\nBody"),
+			frontmatter: { "connie-strip-first-heading": true },
+		},
+		{ ...testSettings, firstHeadingPageTitle: true },
+	);
+
+	expect(adfFile.pageTitle).toBe("Title");
+	expect(adfFile.contents.content.map((node) => node.type)).toEqual(["heading", "paragraph"]);
+});
+
+test("keeps a leading H1 when connie-strip-first-heading is absent", () => {
+	const adfFile = convertMDtoADF(
+		{
+			...createMarkdownFile("# Heading\n\nBody"),
+			frontmatter: { "connie-title": "Page title" },
+		},
+		testSettings,
+	);
+
+	expect(adfFile.contents.content.map((node) => node.type)).toEqual(["heading", "paragraph"]);
+});

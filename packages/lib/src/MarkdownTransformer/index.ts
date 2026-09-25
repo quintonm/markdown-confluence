@@ -3,7 +3,6 @@ import footnotes, { footnoteAnchorAttributes } from "./footnotes";
 
 import { defaultSchema } from "@atlaskit/adf-schema/schema-default";
 import MarkdownIt from "markdown-it";
-import { markdownItTable } from "markdown-it-table";
 import { MarkdownParser } from "@atlaskit/editor-prosemirror/markdown";
 import { Schema, Node as PMNode } from "@atlaskit/editor-prosemirror/model";
 import { markdownItMedia } from "./media";
@@ -12,6 +11,7 @@ import wikilinksPlugin from "./wikilinks";
 import highlightPlugin from "./highlight";
 import formattingPlugin from "./formatting";
 import mathPlugin, { mathAttributes } from "./math";
+import { stableMarkdownItTable } from "./table";
 
 interface Transformer<T> {
 	encode(node: PMNode): T;
@@ -194,7 +194,7 @@ export class MarkdownTransformer implements Transformer<Markdown> {
 		});
 
 		if (schema.nodes["table"]) {
-			tokenizer.use(markdownItTable);
+			tokenizer.use(stableMarkdownItTable);
 			tokenizer.core.ruler.push("table_alignment", (state) => {
 				for (let index = 0; index < state.tokens.length; index++) {
 					const token = state.tokens[index]!;

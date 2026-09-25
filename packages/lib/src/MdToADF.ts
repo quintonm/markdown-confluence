@@ -12,7 +12,7 @@ import { ConfluenceSettings, resolveSiteUrl } from "./Settings";
 import { cleanUpUrlIfConfluence } from "./ConfluenceUrlParser";
 import SparkMD5 from "spark-md5";
 import MarkdownIt from "markdown-it";
-import { markdownItTable } from "markdown-it-table";
+import { stableMarkdownItTable } from "./MarkdownTransformer/table";
 
 const frontmatterRegex = /^\s*?---\n([\s\S]*?)\n---\s*/g;
 
@@ -37,7 +37,7 @@ type PageFragment = "header" | "body" | "footer";
 // Use the same CommonMark block grammar as MarkdownTransformer, enabling only
 // HTML comments. Other HTML remains ordinary Markdown in the converter.
 const commentParser = new MarkdownIt("commonmark", { html: true });
-commentParser.use(markdownItTable);
+commentParser.use(stableMarkdownItTable);
 const htmlBlockParser = new MarkdownIt("commonmark", { html: true });
 htmlBlockParser.block.ruler.enableOnly("html_block");
 const htmlBlockRule = htmlBlockParser.block.ruler.getRules("")[0]!;

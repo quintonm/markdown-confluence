@@ -25,6 +25,7 @@ import { createFolderStructureEffect as createLocalAdfTreeEffect } from "./TreeL
 import { isEqual } from "./isEqual";
 import { INLINE_COMMENT_LIMITS, remapInlineComments } from "./InlineCommentMapping";
 import { resolvedInlineCommentIds } from "./ResolvedInlineComments";
+import { carryEditorBlockWidths } from "./EditorBlockWidths";
 
 export interface LocalAdfFileTreeNode {
 	name: string;
@@ -410,10 +411,15 @@ export class Publisher {
 				adfFile.contents,
 				{ workspace, pageFilePath: adfFile.absoluteFilePath },
 			);
-			const adfToUpload = yield* executeADFProcessingPipelineEffect(
-				adfProcessingPlugins,
-				preprocessedAdf,
-				supportFunctions,
+			// After processing, so blocks a plugin turned into something else (e.g. a
+			// rendered diagram) are not stamped as code blocks.
+			const adfToUpload = carryEditorBlockWidths(
+				yield* executeADFProcessingPipelineEffect(
+					adfProcessingPlugins,
+					preprocessedAdf,
+					supportFunctions,
+				),
+				existingPageData.adfContent,
 			);
 
 			if (uploadedAttachment) {

@@ -877,6 +877,57 @@ test("does not republish unchanged content after Confluence assigns localIds", a
 	expect(updateContentRequests).toEqual([]);
 });
 
+test("keeps editor-applied block widths so an unchanged republish is a no-op", async () => {
+	const markdown = "```js\nconst a = 1;\n```\n\n| A |\n| --- |\n| x |";
+	const existingAdf = parseMarkdownToADF(markdown, testPublishSettings.confluenceBaseUrl);
+	for (const node of existingAdf.content) {
+		if (node.type === "codeBlock")
+			node.marks = [{ type: "breakout", attrs: { mode: "wide", width: 1800 } }];
+		if (node.type === "table") node.attrs = { ...node.attrs, layout: "default", width: 1800 };
+	}
+
+	const { result, updateContentRequests } = await publishSinglePage({ markdown, existingAdf });
+	expect(result[0]?.successfulUploadResult?.contentResult).toBe("same");
+	expect(updateContentRequests).toEqual([]);
+});
+
+test("applies editor block widths only to code blocks that remain code after processing", async () => {
+	// Like the Mermaid renderer, this plugin turns a code block into another node in place.
+	const diagramPlugin: ADFProcessingPlugin<undefined, undefined> = {
+		extract: () => undefined,
+		transform: async () => undefined,
+		load: (adf) => {
+			for (const node of adf.content) {
+				if (node.type === "codeBlock" && node.attrs?.["language"] === "diagram") {
+					Object.assign(node, {
+						type: "paragraph",
+						content: [{ type: "text", text: "diagram" }],
+					});
+					delete node.attrs;
+				}
+			}
+			return adf;
+		},
+	};
+	const markdown = "```js\nconst a = 1;\n```\n\n```diagram\nA --> B\n```";
+	const existingAdf = parseMarkdownToADF(markdown, testPublishSettings.confluenceBaseUrl);
+	existingAdf.content = [
+		{
+			...existingAdf.content[0]!,
+			marks: [{ type: "breakout", attrs: { mode: "wide", width: 1800 } }],
+		},
+		{ type: "paragraph", content: [{ type: "text", text: "diagram" }] },
+	] as typeof existingAdf.content;
+
+	const { result, updateContentRequests } = await publishSinglePage({
+		markdown,
+		existingAdf,
+		plugins: [diagramPlugin as ADFProcessingPlugin<unknown, unknown>],
+	});
+	expect(result[0]?.successfulUploadResult?.contentResult).toBe("same");
+	expect(updateContentRequests).toEqual([]);
+});
+
 test("moves a page when its immediate parent differs", async () => {
 	const { result, updateContentRequests } = await publishSinglePage({
 		existingAncestors: [{ id: "parent-id" }, { id: "old-folder" }],
